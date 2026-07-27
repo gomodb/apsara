@@ -175,12 +175,20 @@ func WithRetry(maxAttempts int) ClientOption {
 type RequestOption func(*requestConfig)
 
 type requestConfig struct {
-	meta *ResponseMeta
+	meta    *ResponseMeta
+	request **http.Request // 捕获最终的 *http.Request（通过 WithRequest 注入）
 }
 
 // WithMeta 让 SDK 将响应元数据（状态码、Header、RequestId、原始 Body）写入 m。
 func WithMeta(m *ResponseMeta) RequestOption {
 	return func(cfg *requestConfig) { cfg.meta = m }
+}
+
+// WithRequest 让 SDK 将最终的 *http.Request（含 URL、Header、Method）写入 req。
+// 该请求对象在发起 HTTP 调用前捕获，可用于调试或记录完整的请求信息。
+// 注意：req.Body 始终为 nil（所有参数均在 URL query string 中）。
+func WithRequest(req **http.Request) RequestOption {
+	return func(cfg *requestConfig) { cfg.request = req }
 }
 
 func newRequestConfig(opts []RequestOption) *requestConfig {
@@ -526,6 +534,11 @@ func (c *Client) tryOnce(
 	}
 
 	c.setHeaders(req.Header)
+
+	// 捕获最终的 *http.Request（若用户通过 WithRequest 注入了指针）
+	if reqCfg.request != nil {
+		*reqCfg.request = req
+	}
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
